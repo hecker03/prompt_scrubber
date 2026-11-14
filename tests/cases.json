@@ -1,0 +1,129 @@
+[
+ {
+  "in": "alice@kali:~$ ls",
+  "out": "user@host:~$ ls"
+ },
+ {
+  "in": "Bob@LAPTOP-123 UCRT64 ~/work",
+  "out": "user@host UCRT64 ~/work"
+ },
+ {
+  "in": "Hacker@DESKTOP-1 MINGW64 /c/x",
+  "out": "user@host MINGW64 /c/x"
+ },
+ {
+  "in": "/home/alice/project",
+  "out": "/home/user/project"
+ },
+ {
+  "in": "/Users/alice/project",
+  "out": "/Users/user/project"
+ },
+ {
+  "in": "C:\\Users\\alice\\Desktop",
+  "out": "C:\\Users\\user\\Desktop"
+ },
+ {
+  "in": "mail me@example.com",
+  "out": "mail [EMAIL]"
+ },
+ {
+  "in": "ssh root@10.0.0.5 -p 22",
+  "out": "ssh user@10.0.0.5 -p 22"
+ },
+ {
+  "in": "password = hunter2",
+  "out": "password = [REDACTED]"
+ },
+ {
+  "in": "\"api_key\": \"sk123456\"",
+  "out": "\"api_key\": \"[REDACTED]\""
+ },
+ {
+  "in": "https://u:pw@host/x",
+  "out": "https://[CRED]@host/x"
+ },
+ {
+  "in": "AKIAABCDEFGHIJKLMNOP",
+  "out": "[AWS_KEY]"
+ },
+ {
+  "in": "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "out": "[GITHUB_TOKEN]"
+ },
+ {
+  "in": "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijkl",
+  "out": "Authorization: Bearer [JWT]"
+ },
+ {
+  "in": "-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----",
+  "out": "[PRIVATE_KEY]"
+ },
+ {
+  "in": "git clone https://github.com/octocat/Hello-World.git",
+  "out": "git clone https://github.com/[GITHUB_USER]/Hello-World.git"
+ },
+ {
+  "in": "git remote add origin git@github.com:octocat/Hello-World.git",
+  "out": "git remote add origin git@github.com:[GITHUB_USER]/Hello-World.git"
+ },
+ {
+  "in": "https://github.com/octocat",
+  "out": "https://github.com/[GITHUB_USER]"
+ },
+ {
+  "in": "https://github.com/features/actions",
+  "out": "https://github.com/features/actions"
+ },
+ {
+  "in": "see octocat.github.io/site",
+  "out": "see [GITHUB_USER].github.io/site"
+ },
+ {
+  "in": "PAN ABCDE1234F",
+  "out": "PAN [PAN]"
+ },
+ {
+  "in": "Aadhaar 1234 5678 9012",
+  "out": "Aadhaar [AADHAAR]"
+ },
+ {
+  "in": "call +91 9876543210",
+  "out": "call [PHONE]"
+ },
+ {
+  "in": "nothing to hide here",
+  "out": "nothing to hide here"
+ },
+ {
+  "in": "Hello Alice Doe and alice",
+  "out": "Hello [NAME] and [NAME]",
+  "terms": [
+   "Alice Doe",
+   "alice"
+  ]
+ },
+ {
+  "in": "-rw-r--r-- 1 Hacker None 973 a.txt",
+  "out": "-rw-r--r-- 1 [NAME] None 973 a.txt",
+  "terms": [
+   "Hacker"
+  ]
+ },
+ {
+  "in": "ping 192.168.1.5 and 127.0.0.1",
+  "out": "ping [IP] and 127.0.0.1",
+  "ips": true
+ },
+ {
+  "in": "ping 192.168.1.5",
+  "out": "ping 192.168.1.5"
+ },
+ {
+  "in": "me@example.com",
+  "out": "me@example.com",
+  "disabled": [
+   "email"
+  ]
+ }
+]

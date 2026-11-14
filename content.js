@@ -1,22 +1,6 @@
-// Redacts sensitive text on paste into any text box. Everything runs locally; nothing is sent anywhere.
-const RULES = [
-  ['privkey', /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[PRIVATE_KEY]'],
-  ['urlcred', /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s\/:@]+:[^\s\/@]+@/gi, '$1[CRED]@'],
-  ['jwt', /\beyJ[\w-]{8,}\.eyJ[\w-]{8,}\.[\w-]{8,}\b/g, '[JWT]'],
-  ['aws', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, '[AWS_KEY]'],
-  ['ghtoken', /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b/g, '[GITHUB_TOKEN]'],
-  ['slack', /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, '[SLACK_TOKEN]'],
-  ['google', /\bAIza[0-9A-Za-z_-]{35}\b/g, '[GOOGLE_KEY]'],
-  ['bearer', /\b(Bearer\s+)[A-Za-z0-9._~+\/=-]{16,}/gi, '$1[TOKEN]'],
-  ['secretkv', /\b((?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|token)\s*[:=]\s*)(["']?)[^\s"',;]+\2/gi, '$1$2[REDACTED]$2'],
-  ['userip', /\b[\w.-]+@(\d{1,3}(?:\.\d{1,3}){3})\b/g, 'user@$1'],
-  ['email', /\b[A-Za-z0-9._%+-]+@(?!\d{1,3}(?:\.\d{1,3}){3}\b)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/g, '[EMAIL]'],
-  ['prompt', /\b[A-Za-z_][\w.-]*@[A-Za-z0-9_-]+(?=:|\s*[$#%>]|\s+(?:MINGW\d*|UCRT64|CLANG\w*|MSYS)\b|\s+[~\/])/g, 'user@host'],
-  ['homelinux', /\/home\/(?!user\b)[^\/\s:]+/g, '/home/user'],
-  ['homemac', /\/Users\/(?!user\b)[^\/\s:]+/g, '/Users/user'],
-  ['homewin', /([A-Za-z]:\\Users\\)(?!user\b)[^\\\s]+/gi, '$1user']
-];
-const IP_RULE = ['ip', /\b(?!127\.|0\.0\.0\.0)(?:\d{1,3}\.){3}\d{1,3}\b/g, '[IP]'];
+// Redacts sensitive text on paste into any text box. Runs locally; nothing is sent anywhere.
+// Rules live in rules.json (generated into rules.js).
+const _RULES = (typeof RULES_JSON !== 'undefined' ? RULES_JSON : require('./rules.js')).rules;
 
 let cfg = { enabled: true, ips: false, terms: [], disabled: [] };
 chrome.storage.local.get('scrub').then(r => { if (r.scrub) cfg = { ...cfg, ...r.scrub }; });
@@ -24,14 +8,15 @@ chrome.storage.onChanged.addListener(c => { if (c.scrub) cfg = { ...cfg, ...c.sc
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function redact(text) {
+function redact(text, c = cfg) {
   let n = 0;
-  const rules = RULES.filter(r => !cfg.disabled.includes(r[0]));
-  if (cfg.ips) rules.push(IP_RULE);
-  for (const t of cfg.terms) {
-    if (t && t.trim()) rules.push(['term', new RegExp('(?<![\\w])' + esc(t.trim()) + '(?![\\w])', 'gi'), '[NAME]']);
+  const active = _RULES
+    .filter(r => !(c.disabled || []).includes(r.id) && (r.default !== false || (r.id === 'ip' && c.ips)))
+    .map(r => [new RegExp(r.pattern, 'g' + (r.flags || '')), r.replace]);
+  for (const t of c.terms || []) {
+    if (t && t.trim()) active.push([new RegExp('(?<![\\w])' + esc(t.trim()) + '(?![\\w])', 'gi'), '[NAME]']);
   }
-  for (const [, re, rep] of rules) {
+  for (const [re, rep] of active) {
     const m = text.match(re);
     if (m) { n += m.length; text = text.replace(re, rep); }
   }
@@ -75,4 +60,4 @@ document.addEventListener('paste', e => {
   toast('Scrubbed ' + r.count + ' item(s)');
 }, true);
 
-if (typeof module !== 'undefined') module.exports = { redact, cfgRef: () => cfg };
+if (typeof module !== 'undefined') module.exports = { redact };

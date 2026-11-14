@@ -1,8 +1,13 @@
 # Prompt Scrubber
 
-Firefox extension that redacts sensitive text as you paste it into prompts.
+Redacts usernames, hostnames, paths, GitHub handles, emails and secrets before you paste text into AI prompts. Runs 100% locally.
 
-When you paste into any text box (AI chats, GitHub, forms), Prompt Scrubber replaces usernames, hostnames, paths, emails and secrets with placeholders before the text is inserted. Everything runs locally in the browser. Nothing is sent anywhere.
+Two ways to use it, one shared rule set (`rules.json`):
+
+| Piece | Covers | Trigger |
+|---|---|---|
+| **Browser extension** (Firefox now; Chrome/Edge/Brave planned) | Text boxes in the browser | Automatic on paste |
+| **Desktop agent** (Python) | Terminals, VS Code, desktop AI apps, any browser | Hotkey or auto-watch on the clipboard |
 
 ## What it redacts
 
@@ -10,64 +15,79 @@ When you paste into any text box (AI chats, GitHub, forms), Prompt Scrubber repl
 |---|---|---|
 | Shell prompts (Linux/macOS/Git Bash) | `alice@kali:~$` | `user@host:~$` |
 | Home paths | `/home/alice`, `/Users/alice`, `C:\Users\alice` | `.../user` |
+| GitHub usernames in URLs and remotes | `github.com/octocat/repo`, `git@github.com:octocat/repo.git`, `octocat.github.io` | `[GITHUB_USER]` |
 | Emails | `me@example.com` | `[EMAIL]` |
 | ssh targets (IP kept) | `root@10.0.0.5` | `user@10.0.0.5` |
-| Passwords / tokens / API keys (`key = value`) | `password = hunter2` | `password = [REDACTED]` |
+| `key = value` secrets | `password = hunter2`, `"api_key": "..."` | `[REDACTED]` |
 | URL credentials | `https://u:pw@host` | `https://[CRED]@host` |
-| AWS, GitHub, Slack, Google keys, JWTs, Bearer tokens | | `[AWS_KEY]`, `[GITHUB_TOKEN]`, ... |
-| Private key blocks | `-----BEGIN ... PRIVATE KEY-----` | `[PRIVATE_KEY]` |
-| Your own terms (name, hostname, college) | `Alice Doe` | `[NAME]` |
-| IPv4 addresses (optional, off by default) | `192.168.1.5` | `[IP]` |
+| AWS / GitHub / Slack / Google keys, JWTs, Bearer tokens, private keys | | `[AWS_KEY]`, `[GITHUB_TOKEN]`, ... |
+| Indian PAN, Aadhaar (spaced), mobile numbers | | `[PAN]`, `[AADHAAR]`, `[PHONE]` |
+| Your own terms (name, hostname) | `Alice Doe` | `[NAME]` |
+| IPv4 (optional, off by default) | `192.168.1.5` | `[IP]` |
 
-A small "Scrubbed N items" toast appears when something is changed. Text with nothing to redact pastes normally.
+## Browser extension
 
-## Install
+**Install**
+- Signed build: download the `.xpi` from [Releases](../../releases) and open it in Firefox.
+- Temporary: `about:debugging#/runtime/this-firefox` -> Load Temporary Add-on -> `manifest.json`.
 
-- **Signed build:** download the `.xpi` from the [Releases](../../releases) page, then open it in Firefox (or `about:addons` -> gear -> Install Add-on From File).
-- **Temporary (development):** `about:debugging#/runtime/this-firefox` -> Load Temporary Add-on -> select `manifest.json`.
+If it does nothing on a site, allow access to all websites: `about:addons` -> Prompt Scrubber -> Permissions.
 
-If it does not act on a site, open `about:addons` -> Prompt Scrubber -> Permissions and allow access to all websites.
-
-## Settings
-
-Open the add-on's Settings page and edit the JSON:
-
+**Settings** (JSON on the add-on's Settings page)
 ```json
-{
-  "enabled": true,
-  "ips": false,
-  "terms": ["yourusername", "Your Name", "YOUR-HOSTNAME"],
-  "disabled": []
-}
+{ "enabled": true, "ips": false, "terms": ["yourusername", "Your Name"], "disabled": [] }
 ```
+`disabled` takes rule ids from `rules.json`, e.g. `["phone", "aadhaar"]`.
 
-- `enabled`: turn the extension on or off.
-- `ips`: also replace IPv4 addresses (off by default, useful when pasting pentest targets).
-- `terms`: your own words to hide. Each becomes `[NAME]`.
-- `disabled`: rule names to turn off, e.g. `["email", "prompt"]`.
+Works on paste only. A hotkey to scrub typed text is planned.
 
-## Limits
+## Desktop agent
 
-- Only works on paste, not on typed text.
-- Firefox only. It does not cover terminals, desktop apps or VS Code.
-- Pattern-based: custom prompts without `@`, or names in plain text, need entries in `terms`.
-
-## Develop
+Works anywhere you can copy and paste, including terminals and VS Code.
 
 ```
-node tests/test.js
-zip -r prompt-scrubber.xpi manifest.json content.js options.html options.js icon.png
+cd agent
+pip install -r requirements.txt
+python scrubber_agent.py              # hotkey mode (default)
+python scrubber_agent.py --watch      # auto-scrub every copy
 ```
 
-Sign the `.xpi` as an unlisted add-on on addons.mozilla.org to install it permanently in regular Firefox.
+- **Hotkey mode:** copy text, press `Ctrl+Alt+S`, paste. The clipboard now holds the scrubbed text. Safest: it never touches passwords you copy from a password manager.
+- **Watch mode:** scrubs every copy automatically. `Ctrl+Alt+P` pauses and resumes.
+- **Auto-learned terms:** reads your OS username, hostname, home folder and `git config user.name/email`, so bare names (`ls -l` owners, `whoami` output, zsh prompts without `@`) are redacted too. `python scrubber_agent.py --show-terms` lists them.
+- **Pipe mode:** `Get-Clipboard | python scrubber_agent.py --stdin` (PowerShell) or `... | python scrubber_agent.py --stdin` (any shell).
+- **Config:** `~/.prompt-scrubber/config.json` (`terms`, `ips`, `disabled`, `auto_learn`, `hotkey`, `pause_hotkey`).
+- **Windows autostart:** put a shortcut to `pythonw scrubber_agent.py --watch` in `shell:startup`.
+- Linux needs `xclip` or `xsel`. macOS needs Accessibility permission for hotkeys.
+
+Limits: acts on the clipboard only (not typed text), and Windows clipboard history (Win+V) may keep the original copy.
+
+## Rules
+
+`rules.json` is the single source of truth. After editing it:
+
+```
+python tools/build_rules.py     # regenerates rules.js for the extension
+node tests/test_js.js           # shared cases, extension logic
+python tests/test_core.py       # shared cases, desktop agent logic + rules.js sync check
+```
+Add a case to `tests/cases.json` for every new rule.
+
+## Build the extension
+
+```
+zip -r prompt-scrubber.xpi manifest.json rules.js content.js options.html options.js icon.png
+```
+Sign as an unlisted add-on on addons.mozilla.org to install it permanently in regular Firefox.
 
 ## Roadmap
 
-- More detectors: Aadhaar/PAN/phone, card numbers (Luhn), more cloud keys, SSH keys, DB connection strings, MAC/IPv6, high-entropy secrets
+- Hotkey to scrub typed text in the browser
+- Chrome / Edge / Brave build
+- VS Code extension
+- More detectors (Luhn-checked cards, more cloud keys, high-entropy secrets)
 - Reversible placeholders (`[NAME_1]`) with a local map
-- Per-site on/off and a settings UI
-- Rules in a shared JSON file, reusable as an input/output sanitization layer for LLM applications
-- Evaluation on a labeled prompt set (precision, recall, false positives)
+- Evaluation on a labeled prompt set; reuse of `rules.json` as an input/output sanitization layer for LLM apps
 
 ## License
 
