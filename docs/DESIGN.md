@@ -1,81 +1,103 @@
-# Scope-aware Prompt Scrubber: design
+# Scope-aware Prompt Scrubber: design v0.2
 
-## 1. Goal
-Let security testers use cloud LLMs on real tool output without leaking client data, while keeping enough context for the LLM to stay useful.
+**Changes from v0.1:** positioning as a pre-ingress privacy module; threat model made explicit; schema version and tie-breaking added; findings never carry values; auto-learned identities need confirmation; precise leakage definition; baselines and freeze protocol; claims limited to what is defensible; timing set to spec-only during endsem.
 
-The scrubber reads an **engagement scope file** and decides, per item: **keep**, **pseudonymize**, or **always remove**.
+## 1. Positioning
+An **optional, local, pre-ingress privacy-minimization module** for lab VAPT text. It reduces exposure of *matched* sensitive values before text goes to an LLM.
+- It is **not** a prompt-injection detector and does not replace Guardrail Layer 1.
+- It is **not** an authorization tool: the scope file controls data handling, not whether testing is permitted.
 
-## 2. Non-goals
-- Not anonymity. Semantic content (a niche bug, a distinctive app) can still identify a client.
-- No network-level protection (IP, timing, headers sent by the user's own client).
-- Not a substitute for the client's NDA or data-handling rules.
-- Evaluated on lab data only (DVWA, Juice Shop), never real client data.
+```
+tool output / clipboard
+      |
+Scope Scrubber (preview -> apply, local session vault)
+      | scrubbed text only
+Guardrail Layer 1 -> 2 -> 3 -> 4 -> LLM -> Layer 5
+```
+Optional later: a separate outbound sensitive-data check at Layer 5. No automatic rehydration there.
 
-## 3. Scope file (`scope.json`)
+## 2. Threat model
+**Goal:** reduce exposure of recognized sensitive values in lab VAPT text sent to cloud LLMs.
+
+**Helps with:** accidental sharing of recognized tokens, identifiers, paths, usernames, phone-like strings and user-defined terms; consistent placeholders within a session.
+
+**Does not provide:** anonymity, complete detection, protection against semantic inference, protection for text sent outside the clipboard/paste flow, security on a compromised machine or extension. Regex evasion, unknown formats, bad scope rules and false positives remain risks.
+
+**Wording rule:** say "risk reduction for specified patterns and workflows". Never "prevents leaks" or "anonymizes".
+
+## 3. Scope file (`scope.json`, schema 1)
 ```json
 {
+  "schema": 1,
   "engagement": "demo-lab",
   "client": { "names": ["Acme Corp"], "domains": ["acme.com"] },
   "keep": { "hosts": ["juice-shop.local", "10.10.10.0/24"] },
   "pseudonymize": { "domains": ["*.acme.com"], "emails": true, "usernames": ["tester1"] },
   "always_remove": ["cookie", "set-cookie", "authorization", "api_keys", "private_keys", "jwt"],
-  "identity": { "auto_learn": true, "terms": [] }
+  "identity": { "auto_learn": true, "confirmed_terms": [] }
 }
 ```
+**Precedence:** `always_remove > keep > pseudonymize > default rules`.
 
-**Precedence (first match wins):**
-1. `always_remove`
-2. `keep` (exact hosts and CIDRs)
-3. `pseudonymize`
-4. default rules from `rules.json`
+**Overlapping spans:**
+1. On the overlapping region, the higher-precedence action wins.
+2. Same action: the longest span wins.
+3. Still tied: the earlier rule in `rules.json` wins.
 
-## 4. Pipeline
-1. **Parse:** detect input type (HTTP request/response first; nmap, nuclei, sqlmap later). Fall back to plain text.
-2. **Classify:** apply the scope file, then default rules and learned identity terms.
-3. **Replace:** consistent placeholders per session (`acme.com` -> `client1.example` everywhere, `user@acme.com` -> `user1@client1.example`).
-4. **Preview:** show a diff of what was kept, replaced and removed. Nothing is sent until confirmed.
-5. **Rehydrate:** map placeholders in the LLM reply back to real values, locally.
+A `keep` entry never overrides `always_remove` (e.g., a token inside a kept host's request).
 
-**Session map:** stored locally only, with a TTL (default 7 days), never sent anywhere. `always_remove` items are **not** stored, so they cannot be rehydrated.
+## 4. Interface (Python library first)
+```python
+result = scrubber.process(text=tool_output, policy=scope_policy,
+                          session=session, mode="preview")   # or "apply"
+# result.scrubbed_text
+# result.findings: [{span, category, action, placeholder}]   <- never the raw value
+restored = scrubber.rehydrate(response, session=session)     # local, opt-in
+```
+- **Session vault:** memory-only in the MVP. Raw values and the mapping are never sent to Guardrail's API, the LLM, logs or dashboards.
+- **`always_remove` values are not stored**, so they cannot be restored.
+- **Unknown placeholders** in a reply are left untouched, never guessed.
+- **Auto-learned identities** (OS user, hostname, git name/email) are shown once for confirmation. Only confirmed terms are used.
+- The extension and desktop agent become **adapters to the same engine** later. No second policy engine.
 
-## 5. Components (reuse what exists)
-| Component | Status |
-|---|---|
-| `rules.json` + shared tests | done (v1.2) |
-| Desktop agent (clipboard, hotkey, `--stdin`) | done (v1.2) |
-| Scope loader + precedence engine | new |
-| HTTP parser (headers, cookies, bodies) | new |
-| Consistent pseudonyms + session map + rehydrate | new |
-| Preview diff | new |
-| Browser extension reads the same scope file | later |
+## 5. Evaluation
+**Question:** on lab VAPT artifacts, does a scope-aware policy reduce policy-violating exposure compared with regex-only rules, while preserving triage utility?
 
-## 6. Evaluation (the research part)
-**Dataset:** about 50 tool outputs from a local DVWA / Juice Shop lab. A script injects fake client identifiers and secrets at known positions, which gives ground-truth labels.
+**Data:** local DVWA / Juice Shop output with **synthetic seeded values** at known positions. No client data, no real personal data. Do not use or redistribute machine output from TryHackMe, HackTheBox or CyberDefenders (platform terms, spoilers).
 
-**Metrics**
 | Metric | Definition |
 |---|---|
-| Leakage rate | share of labeled sensitive items still present after scrubbing |
-| Over-redaction | share of non-sensitive tokens removed or altered |
-| Utility | LLM answers to 5 fixed questions per output (which parameter is injectable, severity, next step, ...), original vs scrubbed + rehydrated, scored with a rubric |
+| Leakage rate | protected gold spans (resolved action `always_remove` or `pseudonymize`) whose raw value survives / all such spans |
+| Over-redaction | `keep` or benign/task-relevant spans altered / all such spans |
+| Detection P/R/F1 | per category |
+| Utility | paired triage tasks on original vs scrubbed text (same model and settings, fake values only); rubric: vulnerability identified, evidence retained, remediation quality |
+| Consistency | same value maps to the same placeholder in a session; no restore from unknown placeholders |
+| Overhead | processing time |
 
-**Baselines:** no scrubbing; generic regex (current v1.2); Nano `prompt-scrub`; ours with scope file.
-**Ablations:** with/without scope file; with/without consistent pseudonyms; with/without HTTP parser.
+**Baselines:** no scrubber; current v1.2 rules; scope-aware version; Presidio only if time allows.
+**Ablations:** scope precedence; session-consistent pseudonyms; `keep` exceptions.
+**Protocol:** freeze the test set and scoring rubric before the final run. Pilot numbers are never reported as final.
 
-**Claim to test:** scope-aware redaction keeps utility close to the unscrubbed baseline while cutting leakage below generic regex scrubbing.
+## 6. Related work and claims
+| Work | Overlap | Position |
+|---|---|---|
+| Prompt Scrubber v1.2 (mine) | regex rules, browser and clipboard flows | the baseline, not a contribution |
+| Nano-Collective `prompt-scrub` | local scrubbing, session placeholders, rehydration, custom detectors, watch mode | not novel claims; **audit its v1.2 docs and source before claiming anything about precedence** |
+| Microsoft Presidio | general PII detection and anonymization | optional baseline |
+| Guardrail Layer 1 | input security analysis | complementary, kept separate |
 
-## 7. Milestones
-| When | Work |
-|---|---|
-| Now to Nov 22 | Finalize this design; collect 10-20 lab outputs (about 1 h/day max) |
-| After endsem to Jan | Scope loader, HTTP parser, pseudonyms, preview, CLI |
-| After GATE (last semester) | Full dataset, benchmark, write-up (paper) |
+**Safe contribution claim:** a Guardrail-compatible, scope-aware policy workflow for lab VAPT artifacts, with explicit action precedence and an empirical leakage-versus-utility evaluation. Do not claim regex, placeholders, clipboard monitoring or rehydration as new. Do not claim "first" or "unique" without a source audit.
+
+## 7. Plan
+| Period | Work | Exit |
+|---|---|---|
+| **Endsem (now to early Dec)** | Spec only, about 1 hour in total: freeze schema 1 and write about 10 precedence/tie-break test cases as a table. No coding. | Frozen schema + test table |
+| **After endsem to GATE** | Light: Nano audit (about 30 min), Python MVP (preview/apply, precedence, in-memory vault), seeded lab fixtures | Tested text-only prototype |
+| **After GATE (last semester)** | One VAPT-to-Guardrail path, baselines, ablations, utility tests, write-up | Reproducible results, report, demo |
 
 ## 8. Risks
-- **False negatives:** always show the preview; report leakage honestly.
-- **LLM-as-judge bias:** use a fixed rubric plus manual spot-checks.
-- **Pseudonym collisions or leakage through structure:** unit-test the mapping, keep placeholders non-derivable from originals.
-- **Scope creep:** HTTP first, other tools later.
-
-## 9. Link to the LLM-security project
-The scrubber becomes the input-sanitization layer, with policy by destination (local vs cloud model) and a prompt risk score. Output checks (reply echoing secrets) are future work.
+- **Novelty:** examiners may call it existing tools combined. Answer: the contribution is the scope policy plus the measured trade-off; compare openly.
+- **False negatives and lost context:** report per-category results, over-redaction and utility. Show the preview before sending.
+- **Narrow boundary:** typing or other upload paths bypass it. Limit claims to tested text workflows.
+- **Vault and scope mistakes:** memory-only vault, confirmation of learned terms, tests for conflicts and unknown placeholders.
+- **Scope creep:** HTTP text first. Other tool outputs later.
