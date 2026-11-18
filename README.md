@@ -16,6 +16,7 @@ Two ways to use it, one shared rule set (`rules.json`):
 | Shell prompts (Linux/macOS/Git Bash) | `alice@kali:~$` | `user@host:~$` |
 | Home paths | `/home/alice`, `/Users/alice`, `C:\Users\alice` | `.../user` |
 | GitHub usernames in URLs and remotes | `github.com/octocat/repo`, `git@github.com:octocat/repo.git`, `octocat.github.io` | `[GITHUB_USER]` |
+| Names in `Name <email>` (git author lines, mail headers) | `Jane Q Public <jane@x.org>` | `[NAME] <[EMAIL]>` |
 | Emails | `me@example.com` | `[EMAIL]` |
 | ssh targets (IP kept) | `root@10.0.0.5` | `user@10.0.0.5` |
 | `key = value` secrets | `password = hunter2`, `"api_key": "..."` | `[REDACTED]` |

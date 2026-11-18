@@ -125,5 +125,29 @@
   "disabled": [
    "email"
   ]
+ },
+ {
+  "in": "Shrishailya Abhay Keskar <me@example.com>",
+  "out": "[NAME] <[EMAIL]>"
+ },
+ {
+  "in": "0a03447 | Jane Q Public <jane@example.org> | Wed Nov 18 | docs: add status",
+  "out": "0a03447 | [NAME] <[EMAIL]> | Wed Nov 18 | docs: add status"
+ },
+ {
+  "in": "Author: octocatuser <12345+octocatuser@users.noreply.github.com>",
+  "out": "Author: [NAME] <[EMAIL]>"
+ },
+ {
+  "in": "Co-authored-by: Some Bot <bot@users.noreply.local>",
+  "out": "Co-authored-by: [NAME] <[EMAIL]>"
+ },
+ {
+  "in": "mail from John Smith <j@x.com> please",
+  "out": "mail from [NAME] <[EMAIL]> please"
+ },
+ {
+  "in": "if a < b and x <y> z then stop",
+  "out": "if a < b and x <y> z then stop"
  }
 ]

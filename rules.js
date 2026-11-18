@@ -75,6 +75,14 @@ const RULES_JSON = {
       "desc": "key = value secrets"
     },
     {
+      "id": "mailbox",
+      "pattern": "(?:[A-Z][\\w.'-]*(?: [A-Z][\\w.'-]*){0,3}|[\\w.-]+)(?= <[^<>\\s@]+@[^<>\\s]+>)",
+      "flags": "",
+      "replace": "[NAME]",
+      "default": true,
+      "desc": "Name before <email> (git author lines, mail headers)"
+    },
+    {
       "id": "userip",
       "pattern": "\\b[\\w.-]+@(\\d{1,3}(?:\\.\\d{1,3}){3})\\b",
       "flags": "",
